@@ -8,4 +8,9 @@
 
     <string name="connection_state_success">Connection success</string>
     <string name="connection_state_failure">Connection failure</string>
+
+    <string name="error_no_device">No device find error</string>
+    <string name="error_no_connection">Connection error</string>
+    <string name="error_claim_interface">Interface not available</string>
+    <string name="error_read_report">Read report error</string>
 </resources>

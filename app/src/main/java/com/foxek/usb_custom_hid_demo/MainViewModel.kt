@@ -4,37 +4,56 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.MutableLiveData
 
-import com.foxek.usb_custom_hid_demo.usb.CustomDevice
-import com.foxek.usb_custom_hid_demo.usb.CustomDevice.Companion.BUTTON_REPORT_ID
+import com.foxek.usb_custom_hid_demo.device.CustomDeviceImpl
+import com.foxek.usb_custom_hid_demo.device.CustomDeviceImpl.Companion.BUTTON_REPORT_ID
+import com.foxek.usb_custom_hid_demo.hardware.UsbHelperImpl
+import com.foxek.usb_custom_hid_demo.type.Error
+import com.foxek.usb_custom_hid_demo.type.Empty
 
 import io.reactivex.disposables.CompositeDisposable
 import io.reactivex.schedulers.Schedulers
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val customDevice = CustomDevice(application.applicationContext)
+    private val customDevice =
+        CustomDeviceImpl(UsbHelperImpl(application.applicationContext))
     private val disposable = CompositeDisposable()
 
     val buttonState = MutableLiveData<Boolean>()
-    val usbOperationError = MutableLiveData<Boolean>()
+    val usbOperationError = MutableLiveData<Error>()
+    val usbOperationSuccess = MutableLiveData<Empty>()
 
-    fun setLedState(state: Boolean) {
-        if (!customDevice.setLedState(state))
-            usbOperationError.postValue(true)
+    fun changeLedButtonPressed(state: Boolean) {
+        customDevice.setLedState(state).handle(::handleError, ::handleChangeLed)
     }
 
-    fun handleConnection() {
-        if (customDevice.isConnected)
+    fun connectButtonPressed() {
+        if (customDevice.isConnected().isSuccess)
             customDevice.disconnect()
         else {
-            if (customDevice.connect()) {
-                observeUsbRequest()
-                usbOperationError.postValue(false)
-            } else
-                usbOperationError.postValue(true)
+            customDevice.connect().handle(::handleError, ::handleConnect)
         }
     }
 
+    private fun handleError(error: Error) {
+        usbOperationError.postValue(error)
+    }
+
+    private fun handleChangeLed(success: Empty){
+        usbOperationSuccess.postValue(success)
+    }
+
+    private fun handleConnect(success: Empty){
+        observeUsbRequest()
+        usbOperationSuccess.postValue(success)
+    }
+
+    private fun handleReport(report: ByteArray){
+        when (report[0]) {
+            BUTTON_REPORT_ID.toByte() -> handleButtonResponse(report)
+            /* handle other report ID*/
+        }
+    }
 
     private fun observeUsbRequest() {
         disposable.add(
@@ -42,14 +61,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 .observeOn(Schedulers.computation())
                 .repeat()
                 .subscribe({
-                    when (it[0]) {
-                        BUTTON_REPORT_ID.toByte() -> handleButtonResponse(it)
-
-                        /* handle other report ID*/
-                    }
-
+                    it.handle(::handleError, ::handleReport)
                 }, {
-                    usbOperationError.postValue(true)
+                    usbOperationError.postValue(Error.ReadReportError)
                 })
         )
     }
